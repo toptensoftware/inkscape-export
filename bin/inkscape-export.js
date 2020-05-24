@@ -1,4 +1,5 @@
 var fs = require('fs');
+var os = require('os');
 var path = require('path');
 var parser = require('fast-xml-parser');
 var child_process = require('child_process');
@@ -80,7 +81,7 @@ function inkscape_export(options)
 
     for (var svgfile of options.files)
     {
-        console.log(`Processing ${svgfile}...`);
+        console.log(`Processing ${svgfile}`);
 
         // Load a parse the file
         var xmlData = fs.readFileSync(svgfile, "utf8");
@@ -97,9 +98,11 @@ function inkscape_export(options)
             stdio: [null,null,null],
         }
 
+        var keys = Object.keys(map)
+        console.log(`  Found ${keys.length} objects to export.`)
 
-
-        for (var k of Object.keys(map))
+        var index = 1;
+        for (var k of keys)
         {
             // Run inkscape
 
@@ -109,7 +112,7 @@ function inkscape_export(options)
                 var suffix = scale == 1 ? "" : `@${scale}x`;
                 var outname = `${k}${suffix}.png`;
 
-                console.log(`  Exporting ${outname}...`)
+                console.log(`  Exporting ${index} of ${keys.length * options.scales.length}: ${outname}`)
 
                 // Setup inkscape args
                 args = [
@@ -130,6 +133,7 @@ function inkscape_export(options)
                     console.log("Exported failed");
                     process.exit(7);
                 }
+                index++;
             }
         }
     }
