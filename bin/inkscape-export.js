@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 var fs = require('fs');
 var os = require('os');
 var path = require('path');
@@ -47,7 +48,7 @@ function build_object_map(o, map)
 
 function inkscape_export(options)
 {
-    if (!options.scales)
+    if (!options.scales || options.scales.length == 0)
         options.scales = [1,2];
     if (!options.inkscape)
     {
@@ -149,7 +150,7 @@ inkscape_export({
 
 function showVersion()
 {
-    let pkg = JSON.parse(fs.readFileSync('package.json'));
+    let pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json')), "utf8");
 
     console.log(`svg-export ${pkg.version} - Inkscape Export Utility`);
     console.log("Copyright (C) 2020 Topten Software.All Rights Reserved");
