@@ -49,7 +49,12 @@ function inkscape_export(options)
     if (!options.scales)
         options.scales = [1,2];
     if (!options.inkscape)
-        options.inkscape = "C:\\Program Files\\Inkscape\\bin\\inkscape";
+    {
+        if (os.platform() == "win32")
+            options.inkscape = "C:\\Program Files\\Inkscape\\bin\\inkscape";
+        else
+            options.inkscape = "inkscape";
+    }
     if (!options.outdir)
         options.outdir = "./";
 
@@ -157,10 +162,11 @@ function showHelp()
     console.log("base name for the exported png file.");
     console.log("");
     console.log("Options:");
-    console.log("   --scale:N       Adds a scale to export");
-    console.log("   --outdir:<dir>  Sets an output directory");
-    console.log("   --help          Shows this help");
-    console.log("   --version       Shows version info");
+    console.log("   --scale:N         Adds a scale to export");
+    console.log("   --outdir:<dir>    Sets an output directory");
+    console.log("   --inkscape:<dir>  Specifies the location of the inkscape executable");
+    console.log("   --help            Shows this help");
+    console.log("   --version         Shows version info");
 }
 
 var options = {
@@ -197,6 +203,10 @@ for (var i=2; i<process.argv.length; i++)
 
             case "out":
                 options.outdir = parts[1];
+                break;
+
+            case "inkscape":
+                options.inkscape = parts[1];
                 break;
 
             case "help":

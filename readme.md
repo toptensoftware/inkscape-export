@@ -16,7 +16,8 @@ You'll also need Inkscape installed.  On Windows it's assumed to be at:
 C:\Program Files\Inkscape
 ~~~
 
-on other platforms `inkscape` should be somewhere on the path.
+on other platforms `inkscape` should be somewhere on the path, or you can use
+the `--inkscape` command line switch to specify where Inkscape is installed.
 
 
 ## Preparing the .SVG File
