@@ -11,8 +11,8 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}\\bin\\inkscape-export.js",
-            "cwd": "${workspaceFolder}\\test",
+            "program": "${workspaceFolder}/bin/inkscape-export.js",
+            "cwd": "${workspaceFolder}/test",
             "args": [
                 "camo.svg"
             ]
