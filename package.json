@@ -1,7 +1,7 @@
 {
   "name": "inkscape-export",
   "description": "Simple command line utilty for exporting multiple .png images, multiple resolutions from inkscape .svg files",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "author": "Topten Software",
   "contributors": [
     {
@@ -28,5 +28,3 @@
     "fast-xml-parser": "^3.17.2"
   }
 }
-
-
