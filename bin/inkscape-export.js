@@ -187,6 +187,7 @@ function showHelp()
     console.log("   --scale:N         Adds a scale to export");
     console.log("   --outdir:<dir>    Sets an output directory");
     console.log("   --inkscape:<dir>  Specifies the location of the inkscape executable");
+    console.log("   --verbose         Shows Inkscape command line");
     console.log("   --help            Shows this help");
     console.log("   --version         Shows version info");
 }
