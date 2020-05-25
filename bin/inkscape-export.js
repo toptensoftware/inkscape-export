@@ -5,6 +5,8 @@ var path = require('path');
 var parser = require('fast-xml-parser');
 var child_process = require('child_process');
 
+var verbose = false;
+
 function mkdirp(targetDir)
 {
     const sep = path.sep;
@@ -95,58 +97,73 @@ function inkscape_export(options)
         // Make sure the output directory exists
         mkdirp(options.outdir);
 
-        var opts = {
+        // Exec options - redirect to null to keep quiet
+        var exec_opts = {
             stdio: [null,null,null],
         }
 
+        // Log how many objects found
         var keys = Object.keys(map)
         console.log(`  Found ${keys.length} objects to export.`)
 
-        var index = 1;
+        // List of pending actions to be executed
+        var actions = "";
+
+        // Helper to execute the pending commands
+        function exec_pending_actions()
+        {
+            // Quit if nothing
+            if (actions.length == 0)
+                return;
+
+            // Setup inkscape args
+            args = [
+                svgfile,
+                `--actions=${actions}`
+            ];
+
+            console.log("  Invoking Inkscape...");
+
+            if (verbose)
+                console.log(args);
+
+            // Run
+            var r = child_process.spawnSync(options.inkscape, args, exec_opts);
+            if (r.status != 0)
+            {
+                console.log(r.stdout.toString("utf8"));
+                console.log("Exported failed");
+                process.exit(7);
+            }
+
+            actions = "";
+        }
+
+        // Build a list of actions to do the export, occassionally flushing
+        // to avoid exceeding Windows command line length limit (32k)
         for (var k of keys)
         {
-            // Run inkscape
-
+            console.log(`  Exporting ${k}`)
             for (var scale of options.scales)
             {
-                // Work out output filename
                 var suffix = scale == 1 ? "" : `@${scale}x`;
                 var outname = `${k}${suffix}.png`;
-
-                console.log(`  Exporting ${index} of ${keys.length * options.scales.length}: ${outname}`)
-
-                // Setup inkscape args
-                args = [
-                    `--export-id=${map[k]}`,
-                    `--export-filename=${path.join(options.outdir, outname)}`,
-                    `--export-dpi=${96*scale}`, 
-                    svgfile
-                ];
-
-                //console.log(`"${inkscape}" ${args.map(x=>`"${x}"`).join(' ')}`);
-                //console.log(args);
-
-                // Run
-                var r = child_process.spawnSync(options.inkscape, args, opts);
-                if (r.status != 0)
-                {
-                    console.log(r.stdout.toString("utf8"));
-                    console.log("Exported failed");
-                    process.exit(7);
-                }
-                index++;
+                actions += `export-id:${map[k]};`;
+                actions += `export-filename:${path.join(options.outdir, outname)};`; 
+                actions += `export-dpi:${96*scale};`;
+                actions += `export-do;`
             }
+
+            if (actions.length > 32000)
+                exec_pending_actions();
         }
+
+        // Find batch of actions
+        exec_pending_actions();
+        console.log("Finished!");
     }
 }
 
-
-/*
-inkscape_export({
-    svgfile: "camo.svg",
-    outdir: "./build/"
-});
-*/
 
 function showVersion()
 {
@@ -212,6 +229,10 @@ for (var i=2; i<process.argv.length; i++)
 
             case "inkscape":
                 options.inkscape = parts[1];
+                break;
+
+            case "verbose":
+                verbose = true;
                 break;
 
             case "help":
