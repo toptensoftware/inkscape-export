@@ -147,9 +147,18 @@ function inkscape_export(options)
             for (var scale of options.scales)
             {
                 var suffix = scale == 1 ? "" : `@${scale}x`;
-                var outname = `${k}${suffix}.png`;
+                var outname = path.join(options.outdir, `${k}${suffix}.png`);
+
+                // If name contains a slash or backslash, make sure the directory exists
+                var slashPos = Math.max(outname.lastIndexOf('\\'), outname.lastIndexOf('/'));
+                if (slashPos > 0)
+                {
+                    mkdirp(outname.substr(0, slashPos));
+                }
+
+
                 actions += `export-id:${map[k]};`;
-                actions += `export-filename:${path.join(options.outdir, outname)};`; 
+                actions += `export-filename:${outname};`; 
                 actions += `export-dpi:${96*scale};`;
                 actions += `export-do;`
             }
@@ -185,7 +194,7 @@ function showHelp()
     console.log("");
     console.log("Options:");
     console.log("   --scale:N         Adds a scale to export");
-    console.log("   --outdir:<dir>    Sets an output directory");
+    console.log("   --out:<dir>       Sets an output directory");
     console.log("   --inkscape:<dir>  Specifies the location of the inkscape executable");
     console.log("   --verbose         Shows Inkscape command line");
     console.log("   --help            Shows this help");

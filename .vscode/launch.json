@@ -12,9 +12,12 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/bin/inkscape-export.js",
-            "cwd": "${workspaceFolder}/test",
+            "cwd": "c:\\users\\brad\\projects\\guikit\\themes",
             "args": [
-                "camo.svg"
+                "ThemeAssets.svg",
+                "--scale:1",
+                "--scale:2",
+                "--out:./test/",
             ]
         }
     ]
