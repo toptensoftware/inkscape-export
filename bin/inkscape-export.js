@@ -2,10 +2,11 @@
 var fs = require('fs');
 var os = require('os');
 var path = require('path');
-var parser = require('fast-xml-parser');
+var xml2json = require('xml2json');
 var child_process = require('child_process');
 
 var verbose = false;
+var quiet = false;
 
 function mkdirp(targetDir)
 {
@@ -28,7 +29,28 @@ function build_object_map(o, map)
         return;
     if (o.title)
     {
-        map[o.title["#text"]] = o.attr['@_id'];
+        map[o.title.$t] = o.id;
+    }
+
+    if (o.style && options.transparent)
+    {
+        var makeTransparent = false;
+        var parts = o.style.split(';').map(x => {
+            if (x.startsWith("fill:" + options.transparent))
+            {
+                makeTransparent = true;
+            }
+            if (makeTransparent && x.startsWith("fill-opacity:"))
+            {
+                return "fill-opacity:0";
+            }
+            return x;
+        });
+        if (makeTransparent)
+        {
+            o.style = parts.join(";");
+            options.rewriteFile = true;
+        }
     }
 
     if (Array.isArray(o))
@@ -63,6 +85,7 @@ function inkscape_export(options)
         options.outdir = "./";
 
     // XML parser options
+    /*
     var xml_options = {
         attributeNamePrefix : "@_",
         attrNodeName: "attr", //default is 'false'
@@ -81,18 +104,31 @@ function inkscape_export(options)
         tagValueProcessor : (val, tagName) => val,
         stopNodes: ["parse-me-as-string"]
     };
+    */
 
     for (var svgfile of options.files)
     {
-        console.log(`Processing ${svgfile}`);
+        if (!quiet)
+            console.log(`Processing ${svgfile}`);
 
         // Load a parse the file
         var xmlData = fs.readFileSync(svgfile, "utf8");
-        var svg = parser.convertToJson(parser.getTraversalObj(xmlData,xml_options),xml_options);
+        var svg = JSON.parse(xml2json.toJson(xmlData, {reversible: true}))
+
+        // Clear rewrite flag
+        options.rewriteFile = false;
 
         // Build the title to object id map
         var map = {};
         build_object_map(svg, map);
+
+        // Did we make changes?
+        if (options.rewriteFile)
+        {
+            var newSvg = xml2json.toXml(JSON.stringify(svg));
+            svgfile += ".patched";
+            fs.writeFileSync(svgfile, newSvg, "utf8");
+        }
 
         // Make sure the output directory exists
         mkdirp(options.outdir);
@@ -104,7 +140,8 @@ function inkscape_export(options)
 
         // Log how many objects found
         var keys = Object.keys(map)
-        console.log(`  Found ${keys.length} objects to export.`)
+        if (!quiet)
+            console.log(`  Found ${keys.length} objects to export.`)
 
         // List of pending actions to be executed
         var actions = "";
@@ -122,7 +159,8 @@ function inkscape_export(options)
                 `--actions=${actions}`
             ];
 
-            console.log("  Invoking Inkscape...");
+            if (!quiet)
+                console.log("  Invoking Inkscape...");
 
             if (verbose)
                 console.log(args);
@@ -143,7 +181,8 @@ function inkscape_export(options)
         // to avoid exceeding Windows command line length limit (32k)
         for (var k of keys)
         {
-            console.log(`  Exporting ${k}`)
+            if (!quiet)
+                console.log(`  Exporting ${k}`)
             for (var scale of options.scales)
             {
                 var suffix = scale == 1 ? "" : `@${scale}x`;
@@ -169,7 +208,13 @@ function inkscape_export(options)
 
         // Find batch of actions
         exec_pending_actions();
-        console.log("Finished!");
+
+        // Delete temp file if we created one
+        if (options.rewriteFile)
+            fs.unlinkSync(svgfile);
+
+        if (!quiet)
+            console.log("Finished!");
     }
 }
 
@@ -193,12 +238,14 @@ function showHelp()
     console.log("base name for the exported png file.");
     console.log("");
     console.log("Options:");
-    console.log("   --scale:N         Adds a scale to export");
-    console.log("   --out:<dir>       Sets an output directory");
-    console.log("   --inkscape:<dir>  Specifies the location of the inkscape executable");
-    console.log("   --verbose         Shows Inkscape command line");
-    console.log("   --help            Shows this help");
-    console.log("   --version         Shows version info");
+    console.log("   --scale:N                Adds a scale to export");
+    console.log("   --out:<dir>              Sets an output directory");
+    console.log("   --transparent:<color>    Sets a color to be made transparent (eg: #333333)")
+    console.log("   --inkscape:<dir>         Specifies the location of the inkscape executable");
+    console.log("   --quiet                  Don't list progress");
+    console.log("   --verbose                Shows Inkscape command line");
+    console.log("   --help                   Shows this help");
+    console.log("   --version                Shows version info");
 }
 
 var options = {
@@ -241,8 +288,16 @@ for (var i=2; i<process.argv.length; i++)
                 options.inkscape = parts[1];
                 break;
 
+            case "transparent":
+                options.transparent = parts[1];
+                break;
+
             case "verbose":
                 verbose = true;
+                break;
+
+            case "quiet":
+                quiet = true;
                 break;
 
             case "help":

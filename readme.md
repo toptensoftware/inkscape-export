@@ -45,4 +45,24 @@ eg: to output to a `build` sub-directory.
 $ inkscape-export my-sprites.svg --scale:1 --scale:2 --out:./build
 ~~~
 
+## Transparent Color
+
+Sometimes it's handy to author the SVG file with a colored background behind 
+certain elements.  This is especially useful when creating sizing rectangles to 
+enforce the inclusion of whitespace around an element.
+
+To make editing of the SVG file easier, those rectangles can be given a specific 
+color that will be made transparent during the export.  Specify the color to be 
+used with the --transparent command line option:
+
+eg: `--transparent:#333333` will cause all elements with a style containing 
+`fill:#333333` to be modified to have a `fill-opacity:0` style.
+
+The modified file will be saved as a file with a `.patched` in the same 
+directory as the original svg file (so write permissions are needed) and will
+be deleted once the export is finished.
+
+
+## More information
+
 Use `inkscape-export --help` for more.

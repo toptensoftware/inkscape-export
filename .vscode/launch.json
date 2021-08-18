@@ -12,11 +12,14 @@
                 "<node_internals>/**"
             ],
             "program": "${workspaceFolder}/bin/inkscape-export.js",
-            "cwd": "c:\\users\\brad\\projects\\guikit\\themes",
+            "cwd": "c:\\users\\brad\\projects\\Cantabile3\\Cantabile.Gui\\Themes",
             "args": [
                 "ThemeAssets.svg",
+                "--transparent:#333333",
+                "--quiet",
                 "--scale:1",
                 "--scale:2",
+                "--scale:4",
                 "--out:./test/",
             ]
         }
