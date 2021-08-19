@@ -4,6 +4,7 @@ var os = require('os');
 var path = require('path');
 var xml2json = require('xml2json');
 var child_process = require('child_process');
+const { equal } = require('assert');
 
 var verbose = false;
 var quiet = false;
@@ -22,49 +23,91 @@ function mkdirp(targetDir)
     }, initDir);
 }
 
-// Help to build a map of object title to object id
-function build_object_map(o, map)
+// Processes the svg tree:
+// 1. building a list of things to export
+// 2. replacing transparent items
+function process_tree(o, items, current_frame_item)
 {
     if (typeof(o) != 'object')
         return;
-    if (o.title)
+
+    // Is this an export item?
+    if ((!options.noTitles && o.title) || o["inkscape-export-filename"])
     {
-        map[o.title.$t] = o.id;
+        // Create item
+        var item = {
+            id: o.id,
+            filename: o["inkscape-export-filename"] || o.title.$t,
+        };
+
+        // Multiple frames?
+        if (o["inkscape-export-frames"])
+        {
+            item.frames = parseInt(o["inkscape-export-frames"])
+            item.frame_objects = [];
+            current_frame_item = item;
+        }
+
+        // Add to list
+        items.push(item);
     }
 
-    if (o.style && options.transparent)
+    // Build a list of items to be modified for the frame
+    if (current_frame_item && o["inkscape-export-frame"])
     {
-        var makeTransparent = false;
-        var parts = o.style.split(';').map(x => {
-            if (x.startsWith("fill:" + options.transparent))
-            {
-                makeTransparent = true;
-            }
-            if (makeTransparent && x.startsWith("fill-opacity:"))
-            {
-                return "fill-opacity:0";
-            }
-            return x;
-        });
-        if (makeTransparent)
+        current_frame_item.frame_objects.push(o);
+    }
+
+    // Update transparent items
+    if (o["inkscape-export-transparent"])
+    {
+        var styleParts = [];
+        if (o.style)
         {
-            o.style = parts.join(";");
-            options.rewriteFile = true;
+            styleParts = o.style.split(';').filter(x => !x.startsWith("fill-opacity:"));
         }
+        styleParts.push("fill-opacity:0");
+        o.style = styleParts.join(';');
+        options.rewriteFile = true;
     }
 
     if (Array.isArray(o))
     {
         for (var i=0; i<o.length; i++)
         {
-            build_object_map(o[i], map);
+            process_tree(o[i], items, current_frame_item);
         }
     }
     else
     {
         for (var k of Object.keys(o))
         {
-            build_object_map(o[k], map);
+            process_tree(o[k], items, current_frame_item);
+        }
+    }
+}
+
+function apply_frame_animations(item, frame)
+{
+    // Work out animation position from 0.0->1.0
+    var x = frame / (item.frames - 1);
+
+    // For all frame objects...
+    for (var i=0; i<item.frame_objects.length; i++)
+    {
+        var o = item.frame_objects[i];
+        var frameOpList = o["inkscape-export-frame"];
+        var frameOps = frameOpList.split(';');
+
+        // For all attribute ops...
+        for (var fo of frameOps)
+        {
+            var equalPos = fo.indexOf('=');
+            var attribute = fo.substr(0, equalPos);
+            var expression = fo.substr(equalPos + 1);
+            var fn = Function('x', 'frame', 'return `'+ expression + '`');
+            var value = fn(x, frame);
+            o[attribute] = value;
         }
     }
 }
@@ -84,28 +127,6 @@ function inkscape_export(options)
     if (!options.outdir)
         options.outdir = "./";
 
-    // XML parser options
-    /*
-    var xml_options = {
-        attributeNamePrefix : "@_",
-        attrNodeName: "attr", //default is 'false'
-        textNodeName : "#text",
-        ignoreAttributes : false,
-        ignoreNameSpace : false,
-        allowBooleanAttributes : false,
-        parseNodeValue : true,
-        parseAttributeValue : false,
-        trimValues: true,
-        cdataTagName: "__cdata", //default is 'false'
-        cdataPositionChar: "\\c",
-        parseTrueNumberOnly: false,
-        arrayMode: false, //"strict"
-        attrValueProcessor: (val, attrName) => val,
-        tagValueProcessor : (val, tagName) => val,
-        stopNodes: ["parse-me-as-string"]
-    };
-    */
-
     for (var svgfile of options.files)
     {
         if (!quiet)
@@ -118,15 +139,18 @@ function inkscape_export(options)
         // Clear rewrite flag
         options.rewriteFile = false;
 
-        // Build the title to object id map
-        var map = {};
-        build_object_map(svg, map);
+        // Build the list of things to export
+        var items = [];
+        process_tree(svg, items);
+
+        var tempFileName;
 
         // Did we make changes?
         if (options.rewriteFile)
         {
             var newSvg = xml2json.toXml(JSON.stringify(svg));
-            svgfile += ".patched";
+            tempFileName = svgfile + ".patched";
+            svgfile = tempFileName;
             fs.writeFileSync(svgfile, newSvg, "utf8");
         }
 
@@ -139,9 +163,8 @@ function inkscape_export(options)
         }
 
         // Log how many objects found
-        var keys = Object.keys(map)
         if (!quiet)
-            console.log(`  Found ${keys.length} objects to export.`)
+            console.log(`  Found ${items.length} objects to export.`)
 
         // List of pending actions to be executed
         var actions = "";
@@ -179,39 +202,85 @@ function inkscape_export(options)
 
         // Build a list of actions to do the export, occassionally flushing
         // to avoid exceeding Windows command line length limit (32k)
-        for (var k of keys)
+        for (var i = 0; i<items.length; i++)
         {
-            if (!quiet)
-                console.log(`  Exporting ${k}`)
-            for (var scale of options.scales)
-            {
-                var suffix = scale == 1 ? "" : `@${scale}x`;
-                var outname = path.join(options.outdir, `${k}${suffix}.png`);
+            var item = items[i];
 
-                // If name contains a slash or backslash, make sure the directory exists
-                var slashPos = Math.max(outname.lastIndexOf('\\'), outname.lastIndexOf('/'));
-                if (slashPos > 0)
+            if (!quiet)
+                console.log(`  Exporting ${item.filename}`)
+
+            // Append command line arguments for the request scale amounts
+            function queue_scale_actions(frame)
+            {
+                var filename = item.filename;
+                if (frame !== undefined)
                 {
-                    mkdirp(outname.substr(0, slashPos));
+                    var frameStr = frame.toString().padStart((item.frames - 1).toString().length, '0');
+                    var fn = Function('frame', 'return `'+ item.filename + '`');
+                    filename = fn(frameStr);
                 }
 
+                for (var scale of options.scales)
+                {
+                    var suffix = scale == 1 ? "" : `@${scale}x`;
+                    var outname = path.join(options.outdir, `${filename}${suffix}.png`);
 
-                actions += `export-id:${map[k]};`;
-                actions += `export-filename:${outname};`; 
-                actions += `export-dpi:${96*scale};`;
-                actions += `export-do;`
+                    // If name contains a slash or backslash, make sure the directory exists
+                    var slashPos = Math.max(outname.lastIndexOf('\\'), outname.lastIndexOf('/'));
+                    if (slashPos > 0)
+                    {
+                        mkdirp(outname.substr(0, slashPos));
+                    }
+
+
+                    actions += `export-id:${item.id};`;
+                    actions += `export-filename:${outname};`; 
+                    actions += `export-dpi:${96*scale};`;
+                    actions += `export-do;`
+                }
             }
 
-            if (actions.length > 32000)
-                exec_pending_actions();
+            // Frame animation on this item?
+            if (item.frames && item.frame_objects.length > 0)
+            {
+                if (!tempFileName)
+                {
+                    tempFileName = svgfile + ".patched";
+                    svgfile = tempFileName;
+                }
+
+                // Repeat for all frames
+                for (var frame = 0; frame < item.frames; frame++)
+                {
+                    // Update object tree
+                    apply_frame_animations(item, frame);
+
+                    // Re-write the file
+                    fs.writeFileSync(tempFileName, xml2json.toXml(JSON.stringify(svg)), "utf8");
+
+                    // Queue actions for this frame
+                    queue_scale_actions(frame);
+
+                    // Always exec immediately
+                    exec_pending_actions();
+                }
+            }
+            else
+            {
+                // Simple export, no frames
+                queue_scale_actions();
+
+                if (actions.length > 32000)
+                    exec_pending_actions();
+            }
         }
 
         // Find batch of actions
         exec_pending_actions();
 
         // Delete temp file if we created one
-        if (options.rewriteFile)
-            fs.unlinkSync(svgfile);
+        if (tempFileName)
+            fs.unlinkSync(tempFileName);
 
         if (!quiet)
             console.log("Finished!");
@@ -240,7 +309,7 @@ function showHelp()
     console.log("Options:");
     console.log("   --scale:N                Adds a scale to export");
     console.log("   --out:<dir>              Sets an output directory");
-    console.log("   --transparent:<color>    Sets a color to be made transparent (eg: #333333)")
+    console.log("   --no-titles              Always use `inscape-export-filename` attribute instead of title")
     console.log("   --inkscape:<dir>         Specifies the location of the inkscape executable");
     console.log("   --quiet                  Don't list progress");
     console.log("   --verbose                Shows Inkscape command line");
@@ -251,7 +320,8 @@ function showHelp()
 var options = {
     files: [],
     scales: [],
-    outdir: "."
+    outdir: ".",
+    noTitles: false,
 }
 
 // Check command line args
@@ -288,8 +358,8 @@ for (var i=2; i<process.argv.length; i++)
                 options.inkscape = parts[1];
                 break;
 
-            case "transparent":
-                options.transparent = parts[1];
+            case "no-titles":
+                options.noTitles = true;
                 break;
 
             case "verbose":
