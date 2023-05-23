@@ -4,7 +4,6 @@ var os = require('os');
 var path = require('path');
 var xml2json = require('xml2json');
 var child_process = require('child_process');
-const { equal } = require('assert');
 
 var verbose = false;
 var quiet = false;
@@ -293,8 +292,7 @@ function showVersion()
     let pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json')), "utf8");
 
     console.log(`svg-export ${pkg.version} - Inkscape Export Utility`);
-    console.log("Copyright (C) 2020 Topten Software. All Rights Reserved
-`);
+    console.log("Copyright (C) 2020 Topten Software. All Rights Reserved");
 }
 
 function showHelp()
